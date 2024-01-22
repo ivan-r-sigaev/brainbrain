@@ -1,10 +1,69 @@
+/*
+* MIT License
+*
+* Copyright (c) 2024 Kakusakov
+*
+* Permission is hereby granted, free of charge, to any person obtaining a copy
+* of this software and associated documentation files (the "Software"), to deal
+* in the Software without restriction, including without limitation the rights
+* to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+* copies of the Software, and to permit persons to whom the Software is
+* furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in all
+* copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+* AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+* OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+* SOFTWARE.
+*/
+
+// Define BB_IMPLEMENTATION to turn this header into a source file. 
+//
+
+#pragma once
+#include <stddef.h>
+
+// The internal representation for the bf program.
+// May be further interpreted or compiled.
+typedef struct Repr Repr;
+
+Repr* repr_parse(const char* src, size_t mem_size);
+size_t repr_mem_size(Repr* repr);
+void repr_print(Repr* repr);
+void repr_free(Repr* repr);
+
+#ifdef BB_IMPLEMENTATION
 #include <stdbool.h>
 #include <stdio.h>
-#include "core.h"
-#include "repr.h"
+#include <stdlib.h>
+#include <assert.h>
+
+#define BB_ASSERT(expression) assert(expression)
+
+static void* bb_safe_malloc(size_t size)
+{
+	void* block = malloc(size);
+	BB_ASSERT(block != NULL);
+	return block;
+}
+static void* bb_safe_realloc(void* block, size_t size)
+{
+	void* new_block = realloc(block, size);
+	BB_ASSERT(new_block != NULL);
+	return new_block;
+}
+
+#define BB_ALLOC(size)          bb_safe_malloc((size))
+#define BB_REALLOC(block, size) bb_safe_realloc((block), (size))
+#define BB_FREE(block)          free((block))
 
 typedef enum OpTag OpTag;
-enum OpTag 
+enum OpTag
 {
 	OpIncrement,
 	OpDecrement,
@@ -13,7 +72,7 @@ enum OpTag
 };
 
 typedef struct Op Op;
-struct Op 
+struct Op
 {
 	OpTag tag;
 	size_t index;
@@ -21,7 +80,7 @@ struct Op
 };
 
 typedef struct Ops Ops;
-struct Ops 
+struct Ops
 {
 	size_t count;
 	size_t capacity;
@@ -50,10 +109,10 @@ struct BlockStack
 	Block* items[];
 };
 
-static Block* block_append(Block* block, Op op) 
+static Block* block_append(Block* block, Op op)
 {
 	BB_ASSERT(block->ops.count <= block->ops.capacity);
-	if (block->ops.count != 0) 
+	if (block->ops.count != 0)
 	{
 		Op* last = &block->ops.items[block->ops.count - 1];
 		// TODO: Could optimize for operators that cancel each other out here.
@@ -73,10 +132,10 @@ static Block* block_append(Block* block, Op op)
 	return block;
 }
 
-static BlockStack* block_stack_push(BlockStack* stack, Block* block) 
+static BlockStack* block_stack_push(BlockStack* stack, Block* block)
 {
 	BB_ASSERT(stack->count <= stack->capacity);
-	if (stack->count == stack->capacity) 
+	if (stack->count == stack->capacity)
 	{
 		size_t new_cap = (stack->capacity != 0) ? stack->capacity * 2 : 1;
 		stack = BB_REALLOC(stack, sizeof(BlockStack) + new_cap * sizeof(Block*));
@@ -92,22 +151,28 @@ static Block* block_stack_pop(BlockStack* stack)
 	return stack->items[--(stack->count)];
 }
 
-static void check_valid_bf(const char* src) 
+static void check_valid_bf(const char* src)
 {
 	size_t indent_level = 0;
-	size_t index = 0;
-	for (const char* c = src; *c != '\0'; c++, index++)
+	size_t char_count = 0;
+	size_t line_count = 0;
+	for (const char* c = src; *c != '\0'; c++, char_count++)
 	{
+		if (*c == '\n')
+		{
+			line_count++;
+			char_count = 0;
+		}
 		if (*c == '[') indent_level++;
 		if (*c == ']')
 		{
-			if (indent_level == 0) 
+			if (indent_level == 0)
 			{
 				BB_ASSERT(fprintf_s(
 					stderr,
 					"Invalid code: no matching openeing brace ('[') "
-					"for closing brace (']') at byte %zu.\n",
-					index) > 0);
+					"for closing brace (']') at line %zu byte %zu.\n",
+					line_count, char_count) > 0);
 				exit(1);
 			}
 			indent_level--;
@@ -129,9 +194,9 @@ Repr* repr_parse(const char* src, size_t mem_size)
 {
 	check_valid_bf(src);
 	BlockStack* unclosed = BB_ALLOC(sizeof(BlockStack));
-	*unclosed = (BlockStack){0};
+	*unclosed = (BlockStack){ 0 };
 	Block* root = BB_ALLOC(sizeof(Block));
-	*root = (Block){0};
+	*root = (Block){ 0 };
 	Block* current = root;
 	Block** to_current = &root;
 	bool should_push_stack = false;
@@ -143,34 +208,38 @@ Repr* repr_parse(const char* src, size_t mem_size)
 		case '+':
 			current = block_append(
 				current,
-				(Op){
-					.tag = OpIncrement,
+				(Op) {
+				.tag = OpIncrement,
 					.index = index,
-					.count = 1});
+					.count = 1
+			});
 			break;
 		case '-':
 			current = block_append(
 				current,
-				(Op){
-					.tag = OpDecrement,
+				(Op) {
+				.tag = OpDecrement,
 					.index = index,
-					.count = 1});
+					.count = 1
+			});
 			break;
 		case ',':
 			current = block_append(
 				current,
-				(Op){
-					.tag = OpInput,
+				(Op) {
+				.tag = OpInput,
 					.index = index,
-					.count = 1});
+					.count = 1
+			});
 			break;
 		case '.':
 			current = block_append(
 				current,
-				(Op){
-					.tag = OpOutput,
+				(Op) {
+				.tag = OpOutput,
 					.index = index,
-					.count = 1});
+					.count = 1
+			});
 			break;
 		case '>':
 			index = (index + 1) % mem_size;
@@ -180,7 +249,7 @@ Repr* repr_parse(const char* src, size_t mem_size)
 			break;
 		case '[':
 		{
-			if (should_push_stack) 
+			if (should_push_stack)
 			{
 				should_push_stack = false;
 				unclosed = block_stack_push(unclosed, current);
@@ -188,7 +257,7 @@ Repr* repr_parse(const char* src, size_t mem_size)
 			current->last_index = index;
 			index = 0;
 			Block* block = BB_ALLOC(sizeof(Block));
-			*block = (Block){0};
+			*block = (Block){ 0 };
 			//unclosed = block_stack_push(unclosed, block);
 			should_push_stack = true;
 			current->next = block;
@@ -207,7 +276,7 @@ Repr* repr_parse(const char* src, size_t mem_size)
 			current->last_index = index;
 			index = 0;
 			Block* block = BB_ALLOC(sizeof(Block));
-			*block = (Block){0};
+			*block = (Block){ 0 };
 			current->next = block_stack_pop(unclosed);
 			current->next->branch = block;
 			*to_current = current;
@@ -226,11 +295,11 @@ Repr* repr_parse(const char* src, size_t mem_size)
 	Repr* repr = BB_ALLOC(sizeof(Repr));
 	*repr = (Repr){
 		.root = root,
-		.mem_size = mem_size};
+		.mem_size = mem_size };
 	return repr;
 }
 
-size_t repr_mem_size(Repr* repr) 
+size_t repr_mem_size(Repr* repr)
 {
 	return repr->mem_size;
 }
@@ -239,7 +308,7 @@ static void block_free(Block* block) {
 	if (block == NULL) return;
 	Block* tmp = block->next;
 	BB_FREE(block);
-	while(tmp != NULL && tmp != block)
+	while (tmp != NULL && tmp != block)
 	{
 		if (tmp->branch != NULL)
 		{
@@ -247,7 +316,7 @@ static void block_free(Block* block) {
 			block_free(tmp);
 			tmp = branch;
 		}
-		else 
+		else
 		{
 			Block* next = tmp->next;
 			BB_FREE(tmp);
@@ -264,11 +333,11 @@ static void print_indent(size_t indent)
 	}
 }
 
-static void block_print(Block* block, size_t indent) 
+static void block_print(Block* block, size_t indent)
 {
 	print_indent(indent);
-	BB_ASSERT(printf_s("Block %p:\n", block) > 0);
-	for (size_t i = 0; i < block->ops.count; i++) 
+	BB_ASSERT(printf_s("Block 0x%p:\n", block) > 0);
+	for (size_t i = 0; i < block->ops.count; i++)
 	{
 		char c;
 		Op op = block->ops.items[i];
@@ -296,7 +365,7 @@ static void block_print(Block* block, size_t indent)
 	BB_ASSERT(printf_s("[%zu]\n", block->last_index) > 0);
 }
 
-static void block_print_chain(Block* block, size_t indent) 
+static void block_print_chain(Block* block, size_t indent)
 {
 	if (block == NULL) return;
 	Block* tmp = block->next;
@@ -327,8 +396,9 @@ void repr_print(Repr* repr)
 	block_print_chain(repr->root, 1);
 }
 
-void repr_free(Repr* repr) 
+void repr_free(Repr* repr)
 {
 	block_free(repr->root);
 	BB_FREE(repr);
 }
+#endif

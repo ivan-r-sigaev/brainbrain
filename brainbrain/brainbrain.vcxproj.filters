@@ -15,24 +15,12 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="sorry.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="main.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="repr.c">
+    <ClCompile Include="test.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="sorry.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="repr.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="core.h">
+    <ClInclude Include="brainbrain.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
