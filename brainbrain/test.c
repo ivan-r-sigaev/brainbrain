@@ -41,6 +41,7 @@ int main(void) {
 		">> > ++++[<++++++++>-] < +.\n",
 		3000);
 	repr_print(hello);
+	repr_execute(hello, stdin, stdout);
 	repr_free(hello);
 	return 0;
 }
