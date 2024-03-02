@@ -43,7 +43,8 @@ static void crash_alloc_failed(void)
 
 static void crash_bad_bf(void)
 {
-	fprintf(stderr, "error: Source code contatins is not valid brainf*ck.\n");
+	// TODO: The error should be more helpful.
+	fprintf(stderr, "error: Source code contatins invalid brainf*ck.\n");
 	exit(1);
 }
 
@@ -207,7 +208,8 @@ typedef enum Target Target;
 enum Target
 {
 	TARGET_BF,
-	TARGET_NASM,
+	TARGET_NASM_LIBC,
+	TARGET_NASM_LINUX,
 };
 
 static int print_tab(size_t count, FILE* file)
@@ -224,7 +226,23 @@ static int emit_file_head(FILE* file, Target target)
 	switch (target)
 	{
 	case TARGET_BF: break;
-	case TARGET_NASM: {
+	case TARGET_NASM_LINUX: {
+		if (fprintf(
+			file,
+			"global _start\n"
+			"\n"
+			"section .bss\n"
+			"tmp resd 1\n"
+			"\n"
+			"section .data\n"
+			"mem db " BF_MEMORY_SIZE_STR " dup(0)\n"
+			"\n"
+			"section .text\n"
+			"_start:\n"
+			"xor esi, esi\n"
+		) < 0) return 0;
+	} break;
+	case TARGET_NASM_LIBC: {
 		if (fprintf(
 			file,
 			"extern putchar\n"
@@ -232,7 +250,7 @@ static int emit_file_head(FILE* file, Target target)
 			"global _start\n"
 			"\n"
 			"section .data\n"
-			"mem db " BF_MEMORY_SIZE_STR  " dup(0)\n"
+			"mem db " BF_MEMORY_SIZE_STR " dup(0)\n"
 			"\n"
 			"section .text\n"
 			"_start:\n"
@@ -251,7 +269,15 @@ static int emit_file_tail(FILE* file, Target target)
 	switch (target)
 	{
 	case TARGET_BF: break;
-	case TARGET_NASM: {
+	case TARGET_NASM_LINUX: {
+		if (fprintf(
+			file,
+			"mov eax, 1\n"
+			"mov ebx, 0\n"
+			"int 80h\n"
+		) < 0) return 0;
+	} break;
+	case TARGET_NASM_LIBC: {
 		if (fprintf(file, "ret\n") < 0) return 0;  // TODO: Is this the correct way to end assembly?
 	} break;
 	default: {
@@ -269,7 +295,7 @@ static int emit_loop_head(Block* loop, size_t layer, FILE* file, Target target)
 		if (!print_tab(layer, file)) return 0;
 		if (fprintf(file, "[\n") < 0) return 0;
 	} break;
-	case TARGET_NASM: {
+	case TARGET_NASM_LIBC: case TARGET_NASM_LINUX: {
 		if (fprintf(
 			file,
 			".loop_%p:\n"
@@ -294,7 +320,7 @@ static int emit_loop_tail(Block* loop, size_t layer, FILE* file, Target target)
 		if (!print_tab(layer - 1, file)) return 0;
 		if (fprintf(file, "]\n") < 0) return 0;
 	} break;
-	case TARGET_NASM: {
+	case TARGET_NASM_LIBC: case TARGET_NASM_LINUX: {
 		if (fprintf(
 			file,
 			"jmp .loop_%p\n"
@@ -334,7 +360,7 @@ static int emit_op_inc(OpInc inc, size_t layer, FILE* file, Target target)
 		}
 		if (fprintf(file, "\n") < 0) return 0;
 	} break;
-	case TARGET_NASM: {
+	case TARGET_NASM_LIBC: case TARGET_NASM_LINUX: {
 		if (fprintf(
 			file,
 			"mov al, [mem + esi]\n"
@@ -375,10 +401,10 @@ static int emit_op_shift(OpShift shift, size_t layer, FILE* file, Target target)
 		}
 		if (fprintf(file, "\n") < 0) return 0;
 	} break;
-	case TARGET_NASM: {
+	case TARGET_NASM_LIBC: case TARGET_NASM_LINUX: {
 		if (fprintf(
 			file,
-			"add si, %" PRIu8 "\n"
+			"add si, %" PRIu16 "\n"
 			"xor dx, dx\n"
 			"mov ax, si\n"
 			"mov bx, " BF_MEMORY_SIZE_STR  "\n"
@@ -402,11 +428,23 @@ static int emit_op_read(FILE* file, size_t layer, Target target)
 		if (!print_tab(layer, file)) return 0;
 		if (fprintf(file, ",\n") < 0) return 0;
 	} break;
-	case TARGET_NASM: {
+	case TARGET_NASM_LIBC: {
 		if (fprintf(
 			file,
 			"call getchar\n"
 			"mov [mem + esi], al\n"
+		) < 0) return 0;
+	} break;
+	case TARGET_NASM_LINUX: {
+		if (fprintf(
+			file,
+			"mov eax, 0x3\n"
+			"mov ebx, 0x1\n"
+			"mov ecx, tmp\n"
+			"mov edx, 0x1\n"
+			"int 80h\n"
+			"mov eax, [tmp]\n"
+			"mov [mem + esi], eax\n"
 		) < 0) return 0;
 	} break;
 	default: {
@@ -424,12 +462,25 @@ static int emit_op_write(FILE* file, size_t layer, Target target)
 		if (!print_tab(layer, file)) return 0;
 		if (fprintf(file, ".\n") < 0) return 0;
 	} break;
-	case TARGET_NASM: {
+	case TARGET_NASM_LIBC: {
 		if (fprintf(
 			file,
 			"xor rdi, rdi\n"
 			"mov dil, [mem + esi]\n"
 			"call putchar\n"
+		) < 0) return 0;
+	} break;
+	case TARGET_NASM_LINUX: {
+		if (fprintf(
+			file,
+			"xor eax, eax\n"
+			"mov al, [mem + esi]\n"
+			"mov [tmp], eax\n"
+			"mov eax, 0x4\n"
+			"mov ebx, 0x1\n"
+			"mov ecx, tmp\n"
+			"mov edx, 0x1\n"
+			"int 80h\n"
 		) < 0) return 0;
 	} break;
 	default: {
@@ -559,7 +610,7 @@ int main(int argc, char* argv[])
 	free(src);
 	fclose(input);
 
-	Target target = TARGET_NASM;
+	Target target = TARGET_NASM_LINUX;
 	const char* output_path = "stdout";
 	FILE* output = stdout;
 	if (argc >= 3)
