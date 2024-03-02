@@ -1,2 +1,2 @@
 # brainbrain
- Brainf*ck compiler/interpreter.
+ Brainf*ck compiler.
