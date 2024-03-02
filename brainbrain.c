@@ -577,7 +577,7 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	if (argc >= 4 && argv[3] == "-b") target = TARGET_BF;
+	if (argc >= 4 && strcmp(argv[3], "-b") == 0) target = TARGET_BF;
 
 	if (!emit_code(flie, output, target))
 	{
