@@ -28,6 +28,7 @@
 #include <stddef.h>
 #include <string.h>
 #include <inttypes.h>
+#include <errno.h>
 
 #define BF_MEMORY_SIZE 3000
 #define BF_MEMORY_SIZE_STR "3000"
