@@ -36,6 +36,36 @@
 #include <assert.h>
 #define ASSERT(x) assert(x)
 
+static void crash_bad_output_flag(void)
+{
+	fprintf(stderr, "error: \"-o\" flag is specified, but output file is not.\n");
+	exit(1);
+}
+
+static void crash_no_input_files(void)
+{
+	fprintf(stderr, "error: Please, specify an input file.\n");
+	exit(1);
+}
+
+static void crash_multiple_output_files(void)
+{
+	fprintf(stderr, "error: Can't select more than one output file.\n");
+	exit(1);
+}
+
+static void crash_multiple_input_files(void)
+{
+	fprintf(stderr, "error: Can't select more than one input file.\n");
+	exit(1);
+}
+
+static void crash_multiple_targets(void)
+{
+	fprintf(stderr, "error: Can't select more than one target.\n");
+	exit(1);
+}
+
 static void crash_alloc_failed(void)
 {
 	fprintf(stderr, "error: Failed to allocate enough memory.\n");
@@ -208,6 +238,7 @@ static Block* parse(const char* src)
 typedef enum Target Target;
 enum Target
 {
+	TARGET_NOT_SELECTED = 0,
 	TARGET_BF,
 	TARGET_NASM_LIBC,
 	TARGET_NASM_LINUX,
@@ -549,15 +580,19 @@ error:
 
 void print_usage(const char* name)
 {
-	if (name == NULL) name = "<brainbrain-path>";
 	fprintf(
 		stderr,
-		"Usage: %s <input> [output] [-b]\n"
+		"Usage: %s <input>\n"
 		"input - path to input file.\n"
-		"output - path to output file. \n"
-		"         If output path is not specified,\n"
-		"         program will write to stdout.\n"
-		"-b - generates brainf*ck insted of assembly.\n",
+		"flags:\n"
+		"-h - prints this message.\n"
+		"-o filename - sepcify path to output file.\n"
+		"              If output path is not specified,\n"
+		"              program will write to stdout.\n"
+		"--help - prints this message.\n"
+		"--libc - set target to libc (default).\n"
+		"--linux - set target to linux.\n"
+		"--brain - generates brainf*ck insted of assembly.\n",
 		name);
 }
 
@@ -588,13 +623,54 @@ char* read_entire_file(FILE* f)
 
 int main(int argc, char* argv[]) 
 {
+	const char* program_path = (argc >= 1) ? argv[0] : "<brainbrain-path>";
 	if (argc < 2)
 	{
-		print_usage((argc >= 1) ? argv[0] : NULL);
+		print_usage(program_path);
 		return 1;
 	}
 
-	const char* input_path = argv[1];
+	Target target = TARGET_NOT_SELECTED;
+	const char* input_path = NULL;
+	const char* output_path = NULL;
+
+	for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0)
+		{
+			print_usage(program_path);
+			return 0;
+		}
+		else if (strcmp(argv[i], "--brain") == 0)
+		{
+			if (target != TARGET_NOT_SELECTED) crash_multiple_targets();
+			target = TARGET_BF;
+		}
+		else if (strcmp(argv[i], "--linux") == 0)
+		{
+			if (target != TARGET_NOT_SELECTED) crash_multiple_targets();
+			target = TARGET_NASM_LINUX;
+		}
+		else if (strcmp(argv[i], "--libc") == 0)
+		{
+			if (target != TARGET_NOT_SELECTED) crash_multiple_targets();
+			target = TARGET_NASM_LIBC;
+		}
+		else if (strcmp(argv[i], "-o") == 0)
+		{
+			if (output_path != NULL) crash_multiple_output_files();
+			if (i + 1 >= argc) crash_bad_output_flag();
+			i++;
+			output_path = argv[i];
+		}
+		else
+		{
+			if (input_path != NULL) crash_multiple_input_files();
+			input_path = argv[i];
+		}
+    }
+	if (target == TARGET_NOT_SELECTED) target = TARGET_NASM_LIBC;
+	if (input_path == NULL) crash_no_input_files();
+
 	FILE* input = fopen(input_path, "rb");
 	if (input == NULL)
 	{
@@ -611,25 +687,17 @@ int main(int argc, char* argv[])
 	free(src);
 	fclose(input);
 
-	Target target = TARGET_NASM_LINUX;
-	const char* output_path = "stdout";
 	FILE* output = stdout;
-	if (argc >= 3)
+	if (output_path == NULL) output_path = "stdout";
+	else 
 	{
-		if (strcmp(argv[2], "-b") == 0) target = TARGET_BF;
-		else
+		output = fopen(output_path, "wb");
+		if (output == NULL)
 		{
-			output_path = argv[2];
-			output = fopen(output_path, "wb");
-			if (output == NULL)
-			{
-				print_file_not_opened(output_path, "writing");
-				return 1;
-			}
+			print_file_not_opened(output_path, "writing");
+			return 1;
 		}
 	}
-
-	if (argc >= 4 && strcmp(argv[3], "-b") == 0) target = TARGET_BF;
 
 	if (!emit_code(flie, output, target))
 	{
