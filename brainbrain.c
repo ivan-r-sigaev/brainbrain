@@ -279,6 +279,7 @@ static int emit_file_head(FILE* file, Target target)
 			file,
 			"extern putchar\n"
 			"extern getchar\n"
+			"extern exit\n"
 			"global _start\n"
 			"\n"
 			"section .data\n"
@@ -310,7 +311,11 @@ static int emit_file_tail(FILE* file, Target target)
 		) < 0) return 0;
 	} break;
 	case TARGET_NASM_LIBC: {
-		if (fprintf(file, "ret\n") < 0) return 0;  // TODO: Is this the correct way to end assembly?
+		if (fprintf(
+			file,
+			"mov rdi, 0\n"
+			"call exit\n"
+		) < 0) return 0;
 	} break;
 	default: {
 		ASSERT(0);
