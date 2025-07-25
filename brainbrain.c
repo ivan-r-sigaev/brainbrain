@@ -271,23 +271,26 @@ static int emit_file_head(FILE* file, Target target)
 			"\n"
 			"section .text\n"
 			"_start:\n"
-			"xor esi, esi\n"
+			"xor r12, r12\n"
 		) < 0) return 0;
 	} break;
 	case TARGET_NASM_LIBC: {
 		if (fprintf(
 			file,
+			"default rel\n"
+			"global main\n"
 			"extern putchar\n"
 			"extern getchar\n"
 			"extern exit\n"
-			"global _start\n"
 			"\n"
-			"section .data\n"
-			"mem db " BF_MEMORY_SIZE_STR " dup(0)\n"
+			"section .bss\n"
+			"mem resb " BF_MEMORY_SIZE_STR "\n"
 			"\n"
 			"section .text\n"
-			"_start:\n"
-			"xor esi, esi\n"
+			"main:\n"
+			"push rbp\n"
+			"mov rbp, rsp\n"
+			"xor r12, r12\n"
 		) < 0) return 0;
 	} break;
 	default: {
@@ -314,7 +317,7 @@ static int emit_file_tail(FILE* file, Target target)
 		if (fprintf(
 			file,
 			"mov rdi, 0\n"
-			"call exit\n"
+			"call exit wrt ..plt\n"
 		) < 0) return 0;
 	} break;
 	default: {
@@ -336,7 +339,8 @@ static int emit_loop_head(Block* loop, size_t layer, FILE* file, Target target)
 		if (fprintf(
 			file,
 			".loop_%p:\n"
-			"cmp byte [mem + esi], 0\n"
+			"lea rax, [rel mem]\n"
+			"cmp byte [rax + r12], 0\n"
 			"je .end_%p\n",
 			loop,
 			loop
@@ -400,9 +404,10 @@ static int emit_op_inc(OpInc inc, size_t layer, FILE* file, Target target)
 	case TARGET_NASM_LIBC: case TARGET_NASM_LINUX: {
 		if (fprintf(
 			file,
-			"mov al, [mem + esi]\n"
+			"lea rbx, [rel mem]\n"
+			"mov al, [rbx + r12]\n"
 			"add al, %" PRIu8 "\n"
-			"mov [mem + esi], al\n",
+			"mov [rbx + r12], al\n",
 			inc.value
 		) < 0) return 0;
 	} break;
@@ -441,12 +446,12 @@ static int emit_op_shift(OpShift shift, size_t layer, FILE* file, Target target)
 	case TARGET_NASM_LIBC: case TARGET_NASM_LINUX: {
 		if (fprintf(
 			file,
-			"add si, %" PRIu16 "\n"
+			"add r12w, %" PRIu16 "\n"
 			"xor dx, dx\n"
-			"mov ax, si\n"
+			"mov ax, r12w\n"
 			"mov bx, " BF_MEMORY_SIZE_STR  "\n"
 			"div bx\n"
-			"mov si, dx\n",
+			"mov r12w, dx\n",
 			shift.index
 		) < 0) return 0;
 	} break;
@@ -468,8 +473,9 @@ static int emit_op_read(FILE* file, size_t layer, Target target)
 	case TARGET_NASM_LIBC: {
 		if (fprintf(
 			file,
-			"call getchar\n"
-			"mov [mem + esi], al\n"
+			"call getchar wrt ..plt\n"
+			"lea rbx, [rel mem]\n"
+			"mov [rbx + r12], al\n"
 		) < 0) return 0;
 	} break;
 	case TARGET_NASM_LINUX: {
@@ -481,7 +487,7 @@ static int emit_op_read(FILE* file, size_t layer, Target target)
 			"mov edx, 0x1\n"
 			"int 80h\n"
 			"mov eax, [tmp]\n"
-			"mov [mem + esi], al\n"
+			"mov [mem + r12], al\n"
 		) < 0) return 0;
 	} break;
 	default: {
@@ -503,15 +509,16 @@ static int emit_op_write(FILE* file, size_t layer, Target target)
 		if (fprintf(
 			file,
 			"xor rdi, rdi\n"
-			"mov dil, [mem + esi]\n"
-			"call putchar\n"
+			"lea rbx, [rel mem]\n"
+			"mov dil, [rbx + r12]\n"
+			"call putchar wrt ..plt\n"
 		) < 0) return 0;
 	} break;
 	case TARGET_NASM_LINUX: {
 		if (fprintf(
 			file,
 			"xor eax, eax\n"
-			"mov al, [mem + esi]\n"
+			"mov al, [mem + r12]\n"
 			"mov [tmp], eax\n"
 			"mov eax, 0x4\n"
 			"mov ebx, 0x1\n"
