@@ -481,7 +481,7 @@ static int emit_op_read(FILE* file, size_t layer, Target target)
 			"mov edx, 0x1\n"
 			"int 80h\n"
 			"mov eax, [tmp]\n"
-			"mov [mem + esi], eax\n"
+			"mov [mem + esi], al\n"
 		) < 0) return 0;
 	} break;
 	default: {
